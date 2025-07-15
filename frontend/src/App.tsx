@@ -101,6 +101,9 @@ const App: React.FC = () => {
     }
   };
 
+  // Add a cache-busting query param to each image to force reload
+  const getPieceSrc = (piece: string) => `${API_URL}${piece}?t=${Date.now()}`;
+
   return (
     <div className="App">
       <h1>Image Shatter & Rebuild</h1>
@@ -123,10 +126,16 @@ const App: React.FC = () => {
           }}>
             {shuffledPieces.map((piece, idx) => (
               <img
-                key={idx}
-                src={`${API_URL}${piece}`}
+                key={piece + '-' + idx}
+                src={getPieceSrc(piece)}
                 alt={`piece-${idx}`}
-                style={{ width: 40, height: 40, border: '1px solid #ccc', cursor: 'pointer' }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  cursor: 'pointer',
+                  outline: '1px solid #ccc',
+                  boxSizing: 'border-box',
+                }}
                 onClick={() => setModalPiece(`${API_URL}${piece}`)}
               />
             ))}
@@ -154,7 +163,15 @@ const App: React.FC = () => {
               <img
                 src={modalPiece}
                 alt="Zoomed piece"
-                style={{ width: 200, height: 200, background: '#fff', border: '4px solid #fff', borderRadius: 8 }}
+                style={{
+                  width: 200,
+                  height: 200,
+                  filter: 'drop-shadow(0 0 4px #000) drop-shadow(0 0 8px #0074D9)',
+                  background: 'none',
+                  border: 'none',
+                  borderRadius: 0,
+                  display: 'block',
+                }}
                 onClick={e => e.stopPropagation()}
               />
             </div>
@@ -164,7 +181,11 @@ const App: React.FC = () => {
       {rebuiltUrl && (
         <div>
           <h2>Rebuilt Image</h2>
-          <img src={rebuiltUrl} alt="rebuilt" style={{ maxWidth: 400, border: '2px solid #333' }} />
+          <img
+            src={rebuiltUrl ? rebuiltUrl + '?t=' + Date.now() : ''}
+            alt="rebuilt"
+            style={{ maxWidth: 400, border: '2px solid #333' }}
+          />
           {rebuildRuntime !== null && (
             <p>Rebuild runtime: {rebuildRuntime.toFixed(2)} seconds</p>
           )}

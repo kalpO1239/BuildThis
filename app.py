@@ -29,6 +29,13 @@ def allowed_file(filename):
 
 @app.route('/shatter', methods=['POST'])
 def shatter():
+    # Always reset pieces and rebuilt folders at the start
+    if os.path.exists(PIECES_FOLDER):
+        shutil.rmtree(PIECES_FOLDER)
+    os.makedirs(PIECES_FOLDER, exist_ok=True)
+    if os.path.exists(REBUILT_FOLDER):
+        shutil.rmtree(REBUILT_FOLDER)
+    os.makedirs(REBUILT_FOLDER, exist_ok=True)
     start_time = time.time()
     if 'image' not in request.files:
         return jsonify({'error': 'No file part'}), 400
@@ -39,10 +46,6 @@ def shatter():
         filename = secure_filename(file.filename)
         upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(upload_path)
-        # Reset pieces folder
-        if os.path.exists(PIECES_FOLDER):
-            shutil.rmtree(PIECES_FOLDER)
-        os.makedirs(PIECES_FOLDER, exist_ok=True)
         # Run shatter.py
         subprocess.run(['python3', 'shatter.py', upload_path], check=True)
         # List pieces
