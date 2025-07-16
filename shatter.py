@@ -6,9 +6,33 @@ from PIL import Image
 import os
 import sys
 from sklearn.cluster import KMeans
+import time
+from concurrent.futures import ThreadPoolExecutor
 
-def voronoi_full_coverage(image_path, n_pieces=50, output_dir="pieces", seed=42, lloyd_iter=10):
+def save_piece(i, img, label_map, output_dir):
+    mask = (label_map == i)
+    piece = np.zeros_like(img)
+    for c in range(4):
+        piece[..., c] = img[..., c] * mask.astype(img.dtype)
+    piece_img = Image.fromarray(piece)
+    piece_img.save(os.path.join(output_dir, f"piece_{i:02d}.png"))
+
+def centroid_and_mask(args):
+    region, vertices, height, width, points, idx = args
+    polygon_vertices = vertices[region]
+    mask = polygon2mask((height, width), polygon_vertices)
+    if np.sum(mask) == 0:
+        # If mask is empty, return original point
+        return points[idx], mask
+    yx = np.argwhere(mask)
+    centroid = yx.mean(axis=0)[::-1]
+    cx = np.clip(centroid[0], 0, width-1)
+    cy = np.clip(centroid[1], 0, height-1)
+    return [cx, cy], mask
+
+def voronoi_full_coverage(image_path, n_pieces=50, output_dir="pieces", seed=42, lloyd_iter=4):
     np.random.seed(seed)
+    t0 = time.time()
     img = np.array(Image.open(image_path).convert("RGBA"))
     height, width = img.shape[:2]
     os.makedirs(output_dir, exist_ok=True)
@@ -17,29 +41,32 @@ def voronoi_full_coverage(image_path, n_pieces=50, output_dir="pieces", seed=42,
         np.random.uniform(0, width, n_pieces),
         np.random.uniform(0, height, n_pieces)
     ])
-    for _ in range(lloyd_iter):
+    for iter_num in range(lloyd_iter):
+        t_iter = time.time()
         vor = Voronoi(points)
         regions, vertices = voronoi_finite_polygons_2d(vor)
-        new_points = []
-        for region in regions:
-            polygon_vertices = vertices[region]
-            mask = polygon2mask((height, width), polygon_vertices)
-            if np.sum(mask) == 0:
-                new_points.append(points[len(new_points)])
-                continue
-            yx = np.argwhere(mask)
-            centroid = yx.mean(axis=0)[::-1]
-            cx = np.clip(centroid[0], 0, width-1)
-            cy = np.clip(centroid[1], 0, height-1)
-            new_points.append([cx, cy])
+        # Parallelize centroid and mask calculation
+        with ThreadPoolExecutor() as executor:
+            results = list(executor.map(
+                centroid_and_mask,
+                [(region, vertices, height, width, points, idx) for idx, region in enumerate(regions)]
+            ))
+        new_points = [r[0] for r in results]
         points = np.array(new_points)
     vor = Voronoi(points)
     regions, vertices = voronoi_finite_polygons_2d(vor)
     # Create initial label map
+    t_label = time.time()
     label_map = np.full((height, width), -1, dtype=int)
-    for i, region in enumerate(regions):
+    # Parallelize mask creation for labeling
+    def mask_for_label(args):
+        i, region = args
         polygon_vertices = vertices[region]
         mask = polygon2mask((height, width), polygon_vertices)
+        return i, mask
+    with ThreadPoolExecutor() as executor:
+        results = list(executor.map(mask_for_label, [(i, region) for i, region in enumerate(regions)]))
+    for i, mask in results:
         label_map[mask] = i
     # Fill any gaps by assigning to nearest region
     mask_uncovered = (label_map == -1)
@@ -67,15 +94,16 @@ def voronoi_full_coverage(image_path, n_pieces=50, output_dir="pieces", seed=42,
     mapping = {old: new for new, old in enumerate(unique)}
     for old, new in mapping.items():
         label_map[label_map == old] = new
-    # Save each region as a piece
-    for i in range(n_pieces):
-        mask = (label_map == i)
-        piece = np.zeros_like(img)
-        for c in range(4):
-            piece[..., c] = img[..., c] * mask.astype(img.dtype)
-        piece_img = Image.fromarray(piece)
-        piece_img.save(os.path.join(output_dir, f"piece_{i:02d}.png"))
-    print(f"Saved {n_pieces} Voronoi pieces with full coverage to {output_dir}/")
+    t1 = time.time()
+    # Save each region as a piece (parallelized)
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(save_piece, i, img, label_map, output_dir)
+            for i in range(n_pieces)
+        ]
+        for f in futures:
+            f.result()  # Wait for all to finish
+    print(f"Total shatter time: {time.time() - t0:.2f}s")
 
 # Helper for finite polygons
 from scipy.spatial import Voronoi
