@@ -9,7 +9,7 @@ import io
 import time
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
 
 UPLOAD_FOLDER = 'uploads'
 PIECES_FOLDER = 'pieces'
@@ -101,4 +101,4 @@ def test():
     return 'CORS is working!'
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True, threaded=True) 
