@@ -7,6 +7,9 @@ from werkzeug.utils import secure_filename
 import zipfile
 import io
 import time
+from shatter import voronoi_full_coverage
+from rebuild import load_pieces, greedy_reconstruct, assemble_image
+from PIL import Image
 
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
@@ -46,8 +49,8 @@ def shatter():
         filename = secure_filename(file.filename)
         upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(upload_path)
-        # Run shatter.py
-        subprocess.run(['python3', 'shatter.py', upload_path], check=True)
+        # Directly call the shatter logic
+        voronoi_full_coverage(upload_path, n_pieces=50, output_dir=app.config['PIECES_FOLDER'])
         # List pieces
         pieces = sorted([f for f in os.listdir(PIECES_FOLDER) if f.endswith('.png')])
         piece_urls = [f'/static/pieces/{p}' for p in pieces]
@@ -71,7 +74,10 @@ def rebuild():
         shutil.copy(src, dst)
     # Run rebuild.py
     output_path = os.path.join(REBUILT_FOLDER, 'rebuilt.png')
-    subprocess.run(['python3', 'rebuild.py', temp_folder, output_path], check=True)
+    pieces, files = load_pieces(temp_folder)
+    placement = greedy_reconstruct(pieces)
+    result = assemble_image(pieces, placement)
+    Image.fromarray(result).save(output_path)
     # Clean up temp folder
     shutil.rmtree(temp_folder)
     runtime = time.time() - start_time
