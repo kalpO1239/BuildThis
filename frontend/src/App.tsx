@@ -106,72 +106,42 @@ const App: React.FC = () => {
 
   return (
     <div className="App">
-      <h1>Image Shatter & Rebuild</h1>
+      <div className="header-box">Image Shatter & Rebuild</div>
       <input type="file" accept="image/png" onChange={handleUpload} />
-      {loading && <p>Loading...</p>}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {loading && (
+        <div className="loader-puzzle">
+          <div className="loader-piece" />
+          <div className="loader-piece" />
+          <div className="loader-piece" />
+        </div>
+      )}
+      {error && <p style={{ color: 'red', margin: '16px 0' }}>{error}</p>}
       {pieces.length === 50 && (
         <>
-          <div style={{ margin: '20px 0' }}>
-            <button onClick={handleShuffle}>Shuffle Pieces</button>
-            <button onClick={handleRebuild} style={{ marginLeft: 10 }}>Rebuild Image</button>
-            <button onClick={handleDownloadPieces} style={{ marginLeft: 10 }}>Download Pieces</button>
-          </div>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(10, 40px)',
-            gridGap: 2,
-            justifyContent: 'center',
-            marginBottom: 20,
-          }}>
-            {shuffledPieces.map((piece, idx) => (
-              <img
-                key={piece + '-' + idx}
-                src={getPieceSrc(piece)}
-                alt={`piece-${idx}`}
-                style={{
-                  width: 40,
-                  height: 40,
-                  cursor: 'pointer',
-                  outline: '1px solid #ccc',
-                  boxSizing: 'border-box',
-                }}
-                onClick={() => setModalPiece(`${API_URL}${piece}`)}
-              />
-            ))}
+          <div className="functions-row">
+            <button className="shatter-btn" onClick={handleShuffle}>Shuffle Pieces</button>
+            <div className="pieces-grid">
+              {shuffledPieces.map((piece, idx) => (
+                <div className="piece-card" key={piece + '-' + idx} onClick={() => setModalPiece(`${API_URL}${piece}`)} tabIndex={0} role="button" aria-label={`Zoom piece ${idx + 1}`}>
+                  <img
+                    src={getPieceSrc(piece)}
+                    alt={`piece-${idx}`}
+                  />
+                </div>
+              ))}
+            </div>
+            <button className="rebuild-btn" onClick={handleRebuild}>Rebuild Image</button>
           </div>
           {shatterRuntime !== null && (
-            <p>Shatter runtime: {shatterRuntime.toFixed(2)} seconds</p>
+            <div className="runtime-box">Shatter runtime: <span>{shatterRuntime.toFixed(2)}</span> seconds</div>
           )}
           {/* Modal for zoomed-in piece */}
           {modalPiece && (
-            <div
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                width: '100vw',
-                height: '100vh',
-                background: 'rgba(0,0,0,0.7)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 1000,
-              }}
-              onClick={() => setModalPiece(null)}
-            >
+            <div className="modal-bg" onClick={() => setModalPiece(null)}>
               <img
                 src={modalPiece}
                 alt="Zoomed piece"
-                style={{
-                  width: 200,
-                  height: 200,
-                  filter: 'drop-shadow(0 0 4px #000) drop-shadow(0 0 8px #0074D9)',
-                  background: 'none',
-                  border: 'none',
-                  borderRadius: 0,
-                  display: 'block',
-                }}
+                className="modal-img"
                 onClick={e => e.stopPropagation()}
               />
             </div>
@@ -184,7 +154,7 @@ const App: React.FC = () => {
           <img
             src={rebuiltUrl ? rebuiltUrl + '?t=' + Date.now() : ''}
             alt="rebuilt"
-            style={{ maxWidth: 400, border: '2px solid #333' }}
+            style={{ maxWidth: 400, border: '2px solid #185adb', borderRadius: 0, boxShadow: '0 4px 24px rgba(24,90,219,0.12)' }}
           />
           {rebuildRuntime !== null && (
             <p>Rebuild runtime: {rebuildRuntime.toFixed(2)} seconds</p>
