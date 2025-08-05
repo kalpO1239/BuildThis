@@ -465,14 +465,51 @@ const App: React.FC = () => {
         boxShadow: theme.shadow
       }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ 
-            color: theme.text, 
-            margin: 0, 
-            fontSize: '28px',
-            fontWeight: '600'
-          }}>
-            🧩 Image Shatter & Rebuild
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ 
+                fontSize: '14px', 
+                color: theme.textSecondary,
+                fontWeight: '500'
+              }}>
+                Stats
+              </span>
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                style={{
+                  width: '40px',
+                  height: '20px',
+                  backgroundColor: sidebarOpen ? theme.primary : theme.surfaceHover,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0'
+                }}
+              >
+                <div style={{
+                  width: '16px',
+                  height: '16px',
+                  backgroundColor: 'white',
+                  borderRadius: '50%',
+                  transform: sidebarOpen ? 'translateX(20px)' : 'translateX(2px)',
+                  transition: 'transform 0.2s ease',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                }} />
+              </button>
+            </div>
+            <h1 style={{ 
+              color: theme.text, 
+              margin: 0, 
+              fontSize: '28px',
+              fontWeight: '600'
+            }}>
+              🧩 Image Shatter & Rebuild
+            </h1>
+          </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
@@ -1266,8 +1303,8 @@ const App: React.FC = () => {
         </>
       )}
 
-      {/* Loading Overlay */}
-      {loading && (
+      {/* Loading Overlay - Only show when not playing game */}
+      {loading && !showGame && (
         <div style={{
             position: 'fixed',
           top: 0,
