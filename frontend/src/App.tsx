@@ -12,64 +12,80 @@ function shuffleArray<T>(array: T[]): T[] {
   return arr;
 }
 
-// Mini-game component
+// Mini-game component - Dice Rolling Game
 const LoadingGame: React.FC<{ theme: any }> = ({ theme }) => {
-  const [score, setScore] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(30);
-  const [gameActive, setGameActive] = useState(true);
-  const [pieces, setPieces] = useState<number[]>([]);
-  const [selectedPiece, setSelectedPiece] = useState<number | null>(null);
-  const [matchedPairs, setMatchedPairs] = useState<number[]>([]);
+  const [dice1, setDice1] = useState(1);
+  const [dice2, setDice2] = useState(1);
+  const [isRolling, setIsRolling] = useState(false);
+  const [rollCount, setRollCount] = useState(0);
+  const [total, setTotal] = useState(2);
 
-  useEffect(() => {
-    // Initialize game pieces (8 pairs = 16 pieces)
-    const gamePieces = Array.from({ length: 8 }, (_, i) => i).flatMap(num => [num, num]);
-    setPieces(shuffleArray(gamePieces));
-  }, []);
-
-  useEffect(() => {
-    if (!gameActive) return;
+  const rollDice = () => {
+    if (isRolling) return;
     
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          setGameActive(false);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [gameActive]);
-
-  const handlePieceClick = (index: number) => {
-    if (!gameActive || matchedPairs.includes(pieces[index])) return;
-
-    if (selectedPiece === null) {
-      setSelectedPiece(index);
-    } else {
-      if (selectedPiece !== index && pieces[selectedPiece] === pieces[index]) {
-        // Match found!
-        setMatchedPairs(prev => [...prev, pieces[index]]);
-        setScore(prev => prev + 10);
-        setSelectedPiece(null);
-      } else {
-        // No match
-        setTimeout(() => setSelectedPiece(null), 1000);
+    setIsRolling(true);
+    setRollCount(prev => prev + 1);
+    
+    // Animate dice rolling
+    let rollDuration = 0;
+    const rollInterval = setInterval(() => {
+      setDice1(Math.floor(Math.random() * 6) + 1);
+      setDice2(Math.floor(Math.random() * 6) + 1);
+      rollDuration += 100;
+      
+      if (rollDuration >= 1000) {
+        clearInterval(rollInterval);
+        setIsRolling(false);
+        const finalDice1 = Math.floor(Math.random() * 6) + 1;
+        const finalDice2 = Math.floor(Math.random() * 6) + 1;
+        setDice1(finalDice1);
+        setDice2(finalDice2);
+        setTotal(finalDice1 + finalDice2);
       }
-    }
+    }, 100);
   };
 
-  const resetGame = () => {
-    setScore(0);
-    setTimeLeft(30);
-    setGameActive(true);
-    setSelectedPiece(null);
-    setMatchedPairs([]);
-    const gamePieces = Array.from({ length: 8 }, (_, i) => i).flatMap(num => [num, num]);
-    setPieces(shuffleArray(gamePieces));
+  const getDiceFace = (number: number) => {
+    const dots = [];
+    const positions = {
+      1: [[1, 1]],
+      2: [[0, 0], [2, 2]],
+      3: [[0, 0], [1, 1], [2, 2]],
+      4: [[0, 0], [0, 2], [2, 0], [2, 2]],
+      5: [[0, 0], [0, 2], [1, 1], [2, 0], [2, 2]],
+      6: [[0, 0], [0, 1], [0, 2], [2, 0], [2, 1], [2, 2]]
+    };
+    
+    positions[number as keyof typeof positions].forEach(([row, col]) => {
+      dots.push(
+        <div
+          key={`${row}-${col}`}
+          style={{
+            position: 'absolute',
+            top: `${(row + 0.5) * 33.33}%`,
+            left: `${(col + 0.5) * 33.33}%`,
+            width: '10px',
+            height: '10px',
+            backgroundColor: '#333',
+            borderRadius: '50%',
+            transform: 'translate(-50%, -50%)',
+            boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.3)'
+          }}
+        />
+      );
+    });
+    
+    return dots;
   };
+
+  useEffect(() => {
+    // Auto-roll every 3 seconds
+    const autoRoll = setInterval(() => {
+      rollDice();
+    }, 3000);
+
+    return () => clearInterval(autoRoll);
+  }, [isRolling]);
 
   return (
     <div style={{
@@ -95,7 +111,7 @@ const LoadingGame: React.FC<{ theme: any }> = ({ theme }) => {
         border: `1px solid ${theme.border}`
       }}>
         <h2 style={{ color: theme.text, margin: '0 0 20px 0' }}>
-          🎮 Puzzle Memory Game
+          🎲 Dice Rolling Game
         </h2>
         
         <div style={{ 
@@ -105,72 +121,128 @@ const LoadingGame: React.FC<{ theme: any }> = ({ theme }) => {
           fontSize: '16px',
           color: theme.textSecondary
         }}>
-          <span>Score: {score}</span>
-          <span>Time: {timeLeft}s</span>
+          <span>Rolls: {rollCount}</span>
+          <span>Total: {total}</span>
         </div>
 
-        {gameActive ? (
+        {/* Dice Container */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '20px',
+          marginBottom: '30px'
+        }}>
+          {/* Dice 1 */}
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: '10px',
-            marginBottom: '20px'
+            width: '80px',
+            height: '80px',
+            backgroundColor: 'white',
+            border: `2px solid #ccc`,
+            borderRadius: '8px',
+            position: 'relative',
+            transform: isRolling ? 'rotate(360deg)' : 'rotate(0deg)',
+            transition: isRolling ? 'transform 0.1s linear' : 'transform 0.3s ease',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+            background: 'linear-gradient(145deg, #ffffff 0%, #f0f0f0 100%)'
           }}>
-            {pieces.map((piece, index) => (
-              <button
-                key={index}
-                onClick={() => handlePieceClick(index)}
-                style={{
-                  width: '60px',
-                  height: '60px',
-                  backgroundColor: matchedPairs.includes(piece) 
-                    ? theme.accent 
-                    : (selectedPiece === index || matchedPairs.includes(pieces[index]))
-                    ? theme.primary
-                    : theme.surfaceHover,
-                  border: `2px solid ${theme.border}`,
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '20px',
-                  color: theme.text,
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                {selectedPiece === index || matchedPairs.includes(piece) ? '🧩' : '❓'}
-              </button>
-            ))}
+            {getDiceFace(dice1)}
           </div>
-        ) : (
-          <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ color: theme.text, margin: '0 0 10px 0' }}>
-              Game Over! Final Score: {score}
-            </h3>
-            <p style={{ color: theme.textSecondary, margin: '0 0 20px 0' }}>
-              Matched {matchedPairs.length} pairs
-            </p>
+
+          {/* Dice 2 */}
+          <div style={{
+            width: '80px',
+            height: '80px',
+            backgroundColor: 'white',
+            border: `2px solid #ccc`,
+            borderRadius: '8px',
+            position: 'relative',
+            transform: isRolling ? 'rotate(-360deg)' : 'rotate(0deg)',
+            transition: isRolling ? 'transform 0.1s linear' : 'transform 0.3s ease',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+            background: 'linear-gradient(145deg, #ffffff 0%, #f0f0f0 100%)'
+          }}>
+            {getDiceFace(dice2)}
+          </div>
+        </div>
+
+        {/* Roll Button */}
+        <button
+          onClick={rollDice}
+          disabled={isRolling}
+          style={{
+            backgroundColor: isRolling ? theme.textMuted : theme.primary,
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '12px 24px',
+            cursor: isRolling ? 'not-allowed' : 'pointer',
+            fontSize: '16px',
+            fontWeight: '500',
+            marginBottom: '20px',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          {isRolling ? '🎲 Rolling...' : '🎲 Roll Dice'}
+        </button>
+
+        {/* Stats */}
+        <div style={{ marginBottom: '20px' }}>
+          <p style={{ 
+            color: theme.textSecondary, 
+            fontSize: '14px',
+            margin: '0 0 10px 0'
+          }}>
+            Dice 1: {dice1} | Dice 2: {dice2}
+          </p>
+          <p style={{ 
+            color: theme.textSecondary, 
+            fontSize: '14px',
+            margin: '0'
+          }}>
+            Auto-rolls every 3 seconds, or click to roll manually!
+          </p>
+        </div>
+
+        {/* Special Messages */}
+        {total === 7 && (
+          <div style={{
+            backgroundColor: theme.accent,
+            color: 'white',
+            padding: '10px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            fontSize: '14px',
+            fontWeight: '500'
+          }}>
+            🍀 Lucky 7!
           </div>
         )}
-
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-          <button
-            onClick={resetGame}
-            style={{
-              backgroundColor: theme.primary,
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '10px 20px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}
-          >
-            {gameActive ? 'Restart' : 'Play Again'}
-          </button>
-        </div>
+        {total === 12 && (
+          <div style={{
+            backgroundColor: theme.warning,
+            color: 'white',
+            padding: '10px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            fontSize: '14px',
+            fontWeight: '500'
+          }}>
+            🎯 Boxcars!
+          </div>
+        )}
+        {total === 2 && (
+          <div style={{
+            backgroundColor: theme.danger,
+            color: 'white',
+            padding: '10px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            fontSize: '14px',
+            fontWeight: '500'
+          }}>
+            🐍 Snake Eyes!
+          </div>
+        )}
 
         <p style={{ 
           color: theme.textMuted, 
@@ -465,52 +537,30 @@ const App: React.FC = () => {
         boxShadow: theme.shadow
       }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ 
-                fontSize: '14px', 
-                color: theme.textSecondary,
-                fontWeight: '500'
-              }}>
-                Stats
-              </span>
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                style={{
-                  width: '40px',
-                  height: '20px',
-                  backgroundColor: sidebarOpen ? theme.primary : theme.surfaceHover,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0'
-                }}
-              >
-                <div style={{
-                  width: '16px',
-                  height: '16px',
-                  backgroundColor: 'white',
-                  borderRadius: '50%',
-                  transform: sidebarOpen ? 'translateX(20px)' : 'translateX(2px)',
-                  transition: 'transform 0.2s ease',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-                }} />
-              </button>
-            </div>
-            <h1 style={{ 
-              color: theme.text, 
-              margin: 0, 
-              fontSize: '28px',
-              fontWeight: '600'
-            }}>
-              🧩 Image Shatter & Rebuild
-            </h1>
-          </div>
+          <h1 style={{ 
+            color: theme.text, 
+            margin: 0, 
+            fontSize: '28px',
+            fontWeight: '600'
+          }}>
+            🧩 Image Shatter & Rebuild
+          </h1>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              style={{
+                backgroundColor: sidebarOpen ? theme.primary : theme.surfaceHover,
+                border: `1px solid ${theme.border}`,
+                borderRadius: '8px',
+                padding: '8px 12px',
+                cursor: 'pointer',
+                color: sidebarOpen ? 'white' : theme.text,
+                fontSize: '14px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              📊 Stats
+            </button>
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               style={{
@@ -740,7 +790,7 @@ const App: React.FC = () => {
 
         {/* Piece Browser - Only show when shattered */}
         {shattered && shuffledPieces.length > 0 && (
-          <div style={{
+            <div style={{
             backgroundColor: theme.surface,
             borderRadius: '16px',
             padding: '30px',
@@ -749,7 +799,7 @@ const App: React.FC = () => {
             border: `1px solid ${theme.border}`
           }}>
             <div style={{ 
-              display: 'flex', 
+              display: 'flex',
               justifyContent: 'space-between', 
               alignItems: 'center',
               marginBottom: '25px',
@@ -835,8 +885,8 @@ const App: React.FC = () => {
           </div>
 
             {/* Carousel */}
-            <div style={{
-              position: 'relative',
+                  <div style={{
+                    position: 'relative',
               width: '100%',
               height: '350px',
               display: 'flex',
@@ -909,8 +959,8 @@ const App: React.FC = () => {
                   zIndex: 10
                 }}>
                   {currentPieceIndex + 1} / {shuffledPieces.length}
+                  </div>
                 </div>
-              </div>
 
               {/* Next Piece */}
               <div style={{
@@ -938,7 +988,7 @@ const App: React.FC = () => {
                     objectPosition: 'center'
                   }}
                 />
-            </div>
+                </div>
 
               {/* Navigation Controls */}
               <div style={{
@@ -997,7 +1047,7 @@ const App: React.FC = () => {
                   →
                 </button>
               </div>
-            </div>
+          </div>
 
             <p style={{ 
               textAlign: 'center', 
@@ -1067,38 +1117,6 @@ const App: React.FC = () => {
       {/* Toggleable Sidebar for Timing Stats */}
       {(shatterRuntime !== null || rebuildRuntime !== null || timingBreakdown || rebuildTimingBreakdown) && (
         <>
-          {/* Switch Toggle */}
-          <div
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            style={{
-              position: 'fixed',
-              top: '50%',
-              right: '20px',
-              transform: 'translateY(-50%)',
-              width: '50px',
-              height: '30px',
-              backgroundColor: sidebarOpen ? theme.primary : theme.border,
-              borderRadius: '15px',
-              cursor: 'pointer',
-              zIndex: 999,
-              transition: 'all 0.3s ease',
-              display: 'flex',
-              alignItems: 'center',
-              padding: '3px',
-              boxShadow: theme.shadow
-            }}
-          >
-            <div style={{
-              width: '24px',
-              height: '24px',
-              backgroundColor: 'white',
-              borderRadius: '50%',
-              transform: sidebarOpen ? 'translateX(20px)' : 'translateX(0px)',
-              transition: 'transform 0.3s ease',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-            }} />
-          </div>
-
           {/* Side Panel */}
           <div style={{
             position: 'fixed',
@@ -1200,7 +1218,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-              {rebuildRuntime !== null && (
+            {rebuildRuntime !== null && (
               <div style={{ 
                 marginBottom: '20px', 
                 padding: '15px', 
@@ -1277,9 +1295,9 @@ const App: React.FC = () => {
                       <span style={{ fontWeight: '600', color: theme.text }}>{rebuildTimingBreakdown.cleanup?.toFixed(3)}s</span>
                     </div>
                   </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
 
             {/* Summary Stats */}
             {(shatterRuntime !== null || rebuildRuntime !== null) && (
