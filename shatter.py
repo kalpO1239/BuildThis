@@ -8,12 +8,16 @@ import sys
 from sklearn.cluster import KMeans
 import time
 from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
-def save_piece(i, img, label_map, output_dir):
+def save_piece_optimized(args):
+    i, img, label_map, output_dir = args
     mask = (label_map == i)
-    piece = np.zeros_like(img)
-    for c in range(4):
-        piece[..., c] = img[..., c] * mask.astype(img.dtype)
+    if not np.any(mask):
+        piece = np.zeros((img.shape[0], img.shape[1], 4), dtype=np.uint8)
+    else:
+        piece = np.zeros_like(img)
+        piece[mask] = img[mask]
     piece_img = Image.fromarray(piece)
     piece_img.save(os.path.join(output_dir, f"piece_{i:02d}.png"))
 
@@ -22,7 +26,6 @@ def centroid_and_mask(args):
     polygon_vertices = vertices[region]
     mask = polygon2mask((height, width), polygon_vertices)
     if np.sum(mask) == 0:
-        # If mask is empty, return original point
         return points[idx], mask
     yx = np.argwhere(mask)
     centroid = yx.mean(axis=0)[::-1]
@@ -30,83 +33,91 @@ def centroid_and_mask(args):
     cy = np.clip(centroid[1], 0, height-1)
     return [cx, cy], mask
 
-def voronoi_full_coverage(image_path, n_pieces=50, output_dir="pieces", seed=42, lloyd_iter=4):
+def voronoi_full_coverage(image_path, n_pieces=50, output_dir="pieces", seed=42, lloyd_iter=0):
     np.random.seed(seed)
     t0 = time.time()
     img = np.array(Image.open(image_path).convert("RGBA"))
     height, width = img.shape[:2]
     os.makedirs(output_dir, exist_ok=True)
-    # Lloyd's relaxation for well-spaced seeds
-    points = np.column_stack([
-        np.random.uniform(0, width, n_pieces),
-        np.random.uniform(0, height, n_pieces)
-    ])
+    
+    grid_size = int(np.ceil(np.sqrt(n_pieces)))
+    x_grid = np.linspace(width * 0.1, width * 0.9, grid_size)
+    y_grid = np.linspace(height * 0.1, height * 0.9, grid_size)
+    xx, yy = np.meshgrid(x_grid, y_grid)
+    points = np.column_stack([xx.ravel(), yy.ravel()])
+    
+    jitter = np.random.uniform(-width * 0.15, width * 0.15, (len(points), 2))
+    points = points + jitter
+    
+    points = points[:n_pieces]
+    
     for iter_num in range(lloyd_iter):
-        t_iter = time.time()
         vor = Voronoi(points)
         regions, vertices = voronoi_finite_polygons_2d(vor)
-        # Parallelize centroid and mask calculation
-        with ThreadPoolExecutor() as executor:
+        
+        with ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
             results = list(executor.map(
                 centroid_and_mask,
                 [(region, vertices, height, width, points, idx) for idx, region in enumerate(regions)]
             ))
         new_points = [r[0] for r in results]
         points = np.array(new_points)
+    
     vor = Voronoi(points)
     regions, vertices = voronoi_finite_polygons_2d(vor)
-    # Create initial label map
-    t_label = time.time()
+    
     label_map = np.full((height, width), -1, dtype=int)
-    # Parallelize mask creation for labeling
-    def mask_for_label(args):
+    
+    def process_region(args):
         i, region = args
         polygon_vertices = vertices[region]
         mask = polygon2mask((height, width), polygon_vertices)
         return i, mask
-    with ThreadPoolExecutor() as executor:
-        results = list(executor.map(mask_for_label, [(i, region) for i, region in enumerate(regions)]))
+    
+    with ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+        results = list(executor.map(process_region, [(i, region) for i, region in enumerate(regions)]))
+    
     for i, mask in results:
         label_map[mask] = i
-    # Fill any gaps by assigning to nearest region
+    
     mask_uncovered = (label_map == -1)
     if np.any(mask_uncovered):
         dist, inds = distance_transform_edt(mask_uncovered, return_indices=True)
         label_map[mask_uncovered] = label_map[inds[0][mask_uncovered], inds[1][mask_uncovered]]
-    # Relabel to ensure consecutive labels
+    
+    unique_labels = np.unique(label_map)
+    if len(unique_labels) > n_pieces:
+        selected_labels = unique_labels[:n_pieces]
+        new_label_map = np.full_like(label_map, -1)
+        for new_idx, old_label in enumerate(selected_labels):
+            new_label_map[label_map == old_label] = new_idx
+        label_map = new_label_map
+    elif len(unique_labels) < n_pieces:
+        while len(np.unique(label_map)) < n_pieces:
+            unique, counts = np.unique(label_map, return_counts=True)
+            largest_label = unique[np.argmax(counts)]
+            coords = np.argwhere(label_map == largest_label)
+            if len(coords) < 2:
+                break
+            kmeans = KMeans(n_clusters=2, random_state=seed, n_init=1)
+            cluster_labels = kmeans.fit_predict(coords)
+            new_label = max(label_map.max() + 1, n_pieces-1)
+            label_map[tuple(coords[cluster_labels == 1].T)] = new_label
+    
     unique = np.unique(label_map)
     mapping = {old: new for new, old in enumerate(unique)}
     for old, new in mapping.items():
         label_map[label_map == old] = new
-    # If fewer than n_pieces, split largest regions
-    while len(np.unique(label_map)) < n_pieces:
-        unique, counts = np.unique(label_map, return_counts=True)
-        largest_label = unique[np.argmax(counts)]
-        coords = np.argwhere(label_map == largest_label)
-        if len(coords) < 2:
-            break  # Can't split further
-        kmeans = KMeans(n_clusters=2, random_state=seed)
-        cluster_labels = kmeans.fit_predict(coords)
-        new_label = max(label_map.max() + 1, n_pieces-1)
-        label_map[tuple(coords[cluster_labels == 1].T)] = new_label
-    # Relabel to 0..n_pieces-1
-    unique = np.unique(label_map)
-    mapping = {old: new for new, old in enumerate(unique)}
-    for old, new in mapping.items():
-        label_map[label_map == old] = new
-    t1 = time.time()
-    # Save each region as a piece (parallelized)
-    with ThreadPoolExecutor() as executor:
+    
+    with ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
         futures = [
-            executor.submit(save_piece, i, img, label_map, output_dir)
+            executor.submit(save_piece_optimized, (i, img, label_map, output_dir))
             for i in range(n_pieces)
         ]
         for f in futures:
-            f.result()  # Wait for all to finish
+            f.result()
+    
     print(f"Total shatter time: {time.time() - t0:.2f}s")
-
-# Helper for finite polygons
-from scipy.spatial import Voronoi
 
 def voronoi_finite_polygons_2d(vor, radius=None):
     if vor.points.shape[1] != 2:
@@ -141,7 +152,6 @@ def voronoi_finite_polygons_2d(vor, radius=None):
                 new_region.append(len(new_vertices) - 1)
         new_regions.append(new_region)
     return new_regions, np.asarray(new_vertices)
-
 
 def main():
     if len(sys.argv) < 2:
