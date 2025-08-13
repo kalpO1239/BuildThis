@@ -217,6 +217,28 @@ def assemble_image(pieces, placement):
         canvas[mask] = piece[mask]
     return canvas
 
+def get_placement_data(pieces, placement):
+    """Export placement data for animation using overlay approach"""
+    n = len(pieces)
+    h, w = pieces[0].shape[:2]
+    
+    placement_data = {
+        'canvas_size': {'width': w, 'height': h},
+        'piece_size': {'width': w, 'height': h},
+        'pieces': []
+    }
+    
+    # For overlay approach, all pieces end up in the same canvas area
+    # We'll create scattered starting positions around the canvas
+    for piece_idx in range(n):
+        placement_data['pieces'].append({
+            'piece_index': piece_idx,
+            'final_position': [0, 0],  # All pieces end up at (0,0) in overlay
+            'filename': f'piece_{piece_idx:02d}.png'
+        })
+    
+    return placement_data
+
 def main():
     import sys
     if len(sys.argv) < 2:

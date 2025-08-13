@@ -8,7 +8,7 @@ import zipfile
 import io
 import time
 from shatter import voronoi_full_coverage
-from rebuild import load_pieces, smart_reconstruct, assemble_image
+from rebuild import load_pieces, smart_reconstruct, assemble_image, get_placement_data
 from PIL import Image
 import numpy as np
 
@@ -130,6 +130,9 @@ def rebuild():
     assembled_image = assemble_image(pieces, placement)
     assemble_time = time.time() - assemble_start
     
+    # Get placement data for animation
+    placement_data = get_placement_data(pieces, placement)
+    
     # Cleanup timing
     cleanup_start = time.time()
     output_path = os.path.join(app.config['REBUILT_FOLDER'], 'reconstructed.png')
@@ -142,6 +145,7 @@ def rebuild():
     total_time = time.time() - total_start
     return jsonify({
         'rebuilt': '/static/rebuilt/reconstructed.png',
+        'placement_data': placement_data,
         'runtime': total_time,
         'timing_breakdown': {
             'copy': copy_time,

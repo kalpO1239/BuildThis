@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
 const API_URL = 'http://127.0.0.1:5001';
@@ -311,6 +311,13 @@ const App: React.FC = () => {
   const [modalPiece, setModalPiece] = useState<string | null>(null);
   const [timingBreakdown, setTimingBreakdown] = useState<any>(null);
   const [rebuildTimingBreakdown, setRebuildTimingBreakdown] = useState<any>(null);
+  const [placementData, setPlacementData] = useState<any>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [scatteredPieces, setScatteredPieces] = useState<any[]>([]);
+  const [animationPhase, setAnimationPhase] = useState<'scattered' | 'moving' | 'complete'>('scattered');
+  const animationRef = useRef<any[]>([]);
+  const animationIdRef = useRef<number>(0);
+  const currentPlacementDataRef = useRef<any>(null);
   const [currentPieceIndex, setCurrentPieceIndex] = useState<number>(0);
   const [pieceCount, setPieceCount] = useState<number>(50);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -322,10 +329,30 @@ const App: React.FC = () => {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
+    
+    // Clean reset - only clear what's necessary
     setUploadedFile(file);
     setOriginalImage(URL.createObjectURL(file));
     setUploadedZipFile(null);
-    resetState();
+    
+    // Clear animation state only
+    setPlacementData(null);
+    setIsAnimating(false);
+    setScatteredPieces([]);
+    setAnimationPhase('scattered');
+    animationRef.current = [];
+    currentPlacementDataRef.current = null;
+    
+    // Reset other state
+    setShattered(false);
+    setShuffledPieces([]);
+    setError(null);
+    setRebuiltUrl(null);
+    setRebuildRuntime(null);
+    setRebuildTimingBreakdown(null);
+    setShatterRuntime(null);
+    setTimingBreakdown(null);
+    setCurrentPieceIndex(0);
   };
 
   const handleZipUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -338,17 +365,22 @@ const App: React.FC = () => {
   };
 
   const resetState = () => {
-    setPieces([]);
-    setShuffledPieces([]);
-    setOriginalImageSize(null);
     setShattered(false);
-    setRebuiltUrl(null);
+    setShuffledPieces([]);
     setError(null);
+    setLoading(false);
+    setShowGame(false);
     setShatterRuntime(null);
-    setRebuildRuntime(null);
     setTimingBreakdown(null);
+    setRebuiltUrl(null);
+    setRebuildRuntime(null);
     setRebuildTimingBreakdown(null);
+    setPlacementData(null);
+    setIsAnimating(false);
+    setScatteredPieces([]);
+    setAnimationPhase('scattered');
     setCurrentPieceIndex(0);
+    currentPlacementDataRef.current = null;
   };
 
   const handleShatter = async () => {
@@ -441,6 +473,14 @@ const App: React.FC = () => {
     setRebuildRuntime(null);
     setRebuildTimingBreakdown(null);
     
+    // Clean animation reset
+    setPlacementData(null);
+    setIsAnimating(false);
+    setScatteredPieces([]);
+    setAnimationPhase('scattered');
+    animationRef.current = [];
+    currentPlacementDataRef.current = null;
+    
     try {
       const res = await fetch(`${API_URL}/rebuild`, {
         method: 'POST',
@@ -452,6 +492,14 @@ const App: React.FC = () => {
         setRebuiltUrl(`${API_URL}${data.rebuilt}`);
         setRebuildRuntime(data.runtime ?? null);
         setRebuildTimingBreakdown(data.timing_breakdown ?? null);
+        
+        // Set fresh placement data
+        setPlacementData(data.placement_data ?? null);
+        
+        // Start animation after a short delay
+        setTimeout(() => {
+          startAnimation();
+        }, 100);
       } else {
         setError(data.error || 'Failed to rebuild image');
       }
@@ -489,6 +537,107 @@ const App: React.FC = () => {
 
   const getPieceSrc = (piece: string) => `${API_URL}${piece}?t=${Date.now()}`;
 
+  const generateScatteredPositions = (placementData: any) => {
+    const { canvas_size, piece_size } = placementData;
+    const scattered = placementData.pieces.map((piece: any) => {
+      // Generate random scattered positions around the canvas
+      const margin = 100;
+      const x = Math.random() * (canvas_size.width + margin * 2) - margin;
+      const y = Math.random() * (canvas_size.height + margin * 2) - margin;
+      
+      return {
+        ...piece,
+        scattered_position: [x, y],
+        current_position: [x, y]
+      };
+    });
+    return scattered;
+  };
+
+  const startAnimation = () => {
+    if (!placementData) return;
+    
+    // Clean animation start
+    animationRef.current = [];
+    animationIdRef.current += 1;
+    const currentAnimationId = animationIdRef.current;
+    
+    // Store current placement data
+    currentPlacementDataRef.current = placementData;
+    
+    setIsAnimating(true);
+    setAnimationPhase('scattered');
+    
+    const scattered = generateScatteredPositions(currentPlacementDataRef.current);
+    setScatteredPieces(scattered);
+    
+    // Start animation immediately
+    setAnimationPhase('moving');
+    
+    // Animate pieces to the center (overlay position)
+    const animationDuration = 2000; // 2 seconds
+    const startTime = performance.now();
+    
+    const animate = (currentTime: number) => {
+      // Check if this animation is still valid
+      if (currentAnimationId !== animationIdRef.current) {
+        return;
+      }
+      
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / animationDuration, 1);
+      
+      // Smoother easing function
+      const easeOutCubic = 1 - Math.pow(1 - progress, 3);
+      
+      const updatedPieces = scattered.map((piece: any) => {
+        const [startX, startY] = piece.scattered_position;
+        const [endX, endY] = piece.final_position;
+        
+        // All pieces move to center (0,0) for overlay
+        const currentX = startX + (0 - startX) * easeOutCubic;
+        const currentY = startY + (0 - startY) * easeOutCubic;
+        
+        return {
+          ...piece,
+          current_position: [currentX, currentY]
+        };
+      });
+      
+      // Store current positions in ref for smooth rendering
+      animationRef.current = updatedPieces;
+      
+      // Update state less frequently to reduce jitter
+      if (Math.floor(progress * 120) % 3 === 0) {
+        setScatteredPieces([...updatedPieces]);
+      }
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        // Animation complete
+        setAnimationPhase('complete');
+        setScatteredPieces(updatedPieces);
+      }
+    };
+    
+    requestAnimationFrame(animate);
+  };
+
+  const closeAnimation = () => {
+    // Clean animation close - but keep placement data for replay
+    setIsAnimating(false);
+    setScatteredPieces([]);
+    setAnimationPhase('scattered');
+    
+    // Don't clear placement data - keep it for replay
+    // setPlacementData(null);
+    
+    // Clear refs
+    animationRef.current = [];
+    currentPlacementDataRef.current = null;
+  };
+
   const nextPiece = () => {
     setCurrentPieceIndex((prev) => (prev + 1) % shuffledPieces.length);
   };
@@ -516,6 +665,26 @@ const App: React.FC = () => {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [shuffledPieces.length, shattered]);
+
+  // Cleanup animation ref when component unmounts or animation state changes
+  useEffect(() => {
+    return () => {
+      animationRef.current = [];
+      currentPlacementDataRef.current = null;
+    };
+  }, [isAnimating]);
+
+  // Additional cleanup when placement data changes
+  useEffect(() => {
+    if (!placementData) {
+      // Clear animation state when placement data is cleared
+      setIsAnimating(false);
+      setScatteredPieces([]);
+      setAnimationPhase('scattered');
+      animationRef.current = [];
+      currentPlacementDataRef.current = null;
+    }
+  }, [placementData]);
 
   return (
     <div className="App" style={{ 
@@ -659,24 +828,26 @@ const App: React.FC = () => {
                 />
               </div>
               {originalImage && (
-                <div style={{ marginTop: '15px' }}>
-          <img
-            src={originalImage}
-            alt="Original"
+                <div style={{ marginTop: '15px', textAlign: 'center' }}>
+                  <img
+                    src={originalImage}
+                    alt="Original"
                     style={{ 
                       maxWidth: '100%', 
                       maxHeight: '150px',
                       border: `2px solid ${theme.border}`, 
-                      borderRadius: '12px'
+                      borderRadius: '12px',
+                      display: 'block',
+                      margin: '0 auto'
                     }}
-          />
-          <button
-            onClick={handleShatter}
+                  />
+                  <button
+                    onClick={handleShatter}
                     disabled={loading}
-            style={{
+                    style={{
                       backgroundColor: theme.primary,
-              color: 'white',
-              border: 'none',
+                      color: 'white',
+                      border: 'none',
                       padding: '12px 24px',
                       borderRadius: '12px',
                       cursor: loading ? 'not-allowed' : 'pointer',
@@ -1109,6 +1280,179 @@ const App: React.FC = () => {
                   boxShadow: theme.shadow
                 }}
               />
+            </div>
+            
+            {/* Replay Animation Button */}
+            {placementData && (
+              <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                <button
+                  onClick={startAnimation}
+                  disabled={isAnimating}
+                  style={{
+                    backgroundColor: theme.primary,
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '10px 20px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: isAnimating ? 'not-allowed' : 'pointer',
+                    opacity: isAnimating ? 0.6 : 1,
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {isAnimating ? '🔄 Animating...' : '🎬 Replay Animation'}
+                </button>
+              </div>
+            )}
+            </div>
+      )}
+
+        {/* Animation Overlay */}
+        {isAnimating && scatteredPieces.length > 0 && (
+        <div
+            key={`animation-${animationIdRef.current}`} // Use animation ID for proper re-render
+          style={{
+            position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.9)',
+              zIndex: 2000,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+              overflow: 'hidden'
+            }}
+            onClick={closeAnimation} // Click outside to close
+          >
+            <div 
+              style={{
+                position: 'relative',
+                width: '800px',
+                height: '600px',
+                border: '2px solid #fff',
+                borderRadius: '8px',
+                backgroundColor: '#000',
+                overflow: 'hidden'
+              }}
+              onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+            >
+              {scatteredPieces.map((piece: any, index: number) => {
+                // Use ref for most current positions during animation
+                const currentPiece = animationRef.current[index] || piece;
+                const [x, y] = currentPiece.current_position;
+                
+                // Add cache-busting to prevent stale images
+                const pieceUrl = `${API_URL}/static/pieces/${piece.filename}?t=${Date.now()}&id=${animationIdRef.current}`;
+                
+                // Use the placement data that was current when animation started
+                const currentPlacementData = currentPlacementDataRef.current || placementData;
+                if (!currentPlacementData) return null;
+                
+                // Calculate scale factor to fit the canvas within the animation box
+                const canvasWidth = currentPlacementData?.canvas_size?.width || 800;
+                const canvasHeight = currentPlacementData?.canvas_size?.height || 600;
+                const scaleX = 800 / canvasWidth;
+                const scaleY = 600 / canvasHeight;
+                const scale = Math.min(scaleX, scaleY, 1); // Don't scale up, only down
+                
+                // Scale the piece size and positions
+                const scaledPieceWidth = (currentPlacementData?.piece_size?.width || 100) * scale;
+                const scaledPieceHeight = (currentPlacementData?.piece_size?.height || 100) * scale;
+                const scaledX = x * scale;
+                const scaledY = y * scale;
+                
+                return (
+                  <img
+                    key={`${piece.piece_index}-${animationIdRef.current}`} // Unique key for each piece and animation
+                    src={pieceUrl}
+                    alt={`Piece ${piece.piece_index}`}
+                    style={{
+                      position: 'absolute',
+                      left: scaledX + 400, // Center in 800px box
+                      top: scaledY + 300,  // Center in 600px box
+                      width: scaledPieceWidth,
+                      height: scaledPieceHeight,
+                      transform: 'translate(-50%, -50%)',
+                      pointerEvents: 'none'
+                    }}
+                  />
+                );
+              })}
+              
+              {/* Exit Button */}
+              <button
+                onClick={closeAnimation}
+                style={{
+                  position: 'absolute',
+                  top: '15px',
+                  right: '15px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  cursor: 'pointer',
+                  color: '#fff',
+                  fontSize: '18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease',
+                  zIndex: 10
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                }}
+              >
+                ✕
+              </button>
+              
+              {/* Animation Progress Bar */}
+              {animationPhase === 'moving' && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '20px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: '200px',
+                  height: '4px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                  borderRadius: '2px',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: '#fff',
+                    borderRadius: '2px',
+                    animation: 'progress 2s linear'
+                  }} />
+        </div>
+      )}
+
+              {/* Animation Text */}
+              <div style={{
+                position: 'absolute',
+                top: '20px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                color: '#fff',
+                fontSize: '18px',
+                fontWeight: '500',
+                textAlign: 'center'
+              }}>
+                {animationPhase === 'scattered' && '🧩 Pieces Scattered - Animation Starting Soon...'}
+                {animationPhase === 'moving' && '🧩 Reconstructing Puzzle...'}
+                {animationPhase === 'complete' && '✅ Puzzle Reconstructed! Click ✕ to exit'}
+              </div>
             </div>
           </div>
         )}
