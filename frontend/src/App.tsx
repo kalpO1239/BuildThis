@@ -319,7 +319,7 @@ const App: React.FC = () => {
   const animationIdRef = useRef<number>(0);
   const currentPlacementDataRef = useRef<any>(null);
   const [currentPieceIndex, setCurrentPieceIndex] = useState<number>(0);
-  const [pieceCount, setPieceCount] = useState<number>(50);
+  const pieceCount = 50; // Fixed at 50 pieces
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showGame, setShowGame] = useState(false);
@@ -460,9 +460,19 @@ const App: React.FC = () => {
     setShowGame(false);
   };
 
-  const handleShuffle = () => {
-    setShuffledPieces(shuffleArray(shuffledPieces));
-    setRebuiltUrl(null);
+  const handleShuffle = async () => {
+    try {
+      // Call server endpoint to shuffle the pieces folder
+      await fetch('http://127.0.0.1:5001/shuffle_pieces', { method: 'POST' });
+  
+      // After shuffling on server, fetch updated pieces list
+      const res = await fetch('http://127.0.0.1:5001/load_pieces'); // You can make a simple endpoint that lists pieces
+      const data = await res.json();
+      setShuffledPieces(data.pieces);
+      setRebuiltUrl(null);
+    } catch (err) {
+      console.error('Error shuffling pieces:', err);
+    }
   };
 
   const handleRebuild = async () => {
@@ -801,37 +811,12 @@ const App: React.FC = () => {
                   transition: 'all 0.2s ease'
                 }}
               />
-              <div style={{ marginTop: '15px' }}>
-                <label style={{ 
-                  display: 'block', 
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  color: theme.textSecondary
-                }}>
-                  Number of pieces:
-                </label>
-                <input
-                  type="number"
-                  value={pieceCount}
-                  onChange={(e) => setPieceCount(parseInt(e.target.value) || 50)}
-                  min="1"
-                  max="200"
-                  style={{
-                    width: '100px',
-                    padding: '8px 12px',
-                    border: `1px solid ${theme.border}`,
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    backgroundColor: theme.background,
-                    color: theme.text
-                  }}
-                />
-              </div>
+
               {originalImage && (
                 <div style={{ marginTop: '15px', textAlign: 'center' }}>
-                  <img
-                    src={originalImage}
-                    alt="Original"
+          <img
+            src={originalImage}
+            alt="Original"
                     style={{ 
                       maxWidth: '100%', 
                       maxHeight: '150px',
@@ -840,14 +825,14 @@ const App: React.FC = () => {
                       display: 'block',
                       margin: '0 auto'
                     }}
-                  />
-                  <button
-                    onClick={handleShatter}
+          />
+          <button
+            onClick={handleShatter}
                     disabled={loading}
-                    style={{
+            style={{
                       backgroundColor: theme.primary,
-                      color: 'white',
-                      border: 'none',
+              color: 'white',
+              border: 'none',
                       padding: '12px 24px',
                       borderRadius: '12px',
                       cursor: loading ? 'not-allowed' : 'pointer',
@@ -904,7 +889,6 @@ const App: React.FC = () => {
                 <input
                   type="number"
                   value={pieceCount}
-                  onChange={(e) => setPieceCount(parseInt(e.target.value) || 50)}
                   min="1"
                   max="100"
                   style={{
@@ -1304,7 +1288,7 @@ const App: React.FC = () => {
                   {isAnimating ? '🔄 Animating...' : '🎬 Replay Animation'}
                 </button>
               </div>
-            )}
+              )}
             </div>
       )}
 
@@ -1369,7 +1353,7 @@ const App: React.FC = () => {
                     key={`${piece.piece_index}-${animationIdRef.current}`} // Unique key for each piece and animation
                     src={pieceUrl}
                     alt={`Piece ${piece.piece_index}`}
-                    style={{
+            style={{
                       position: 'absolute',
                       left: scaledX + 400, // Center in 800px box
                       top: scaledY + 300,  // Center in 600px box
